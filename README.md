@@ -1,6 +1,6 @@
 # symfony-media-app
 
-Simple Symfony 6.4 application - Media application
+Simple Symfony 6.4 Media application
 
 ## Run project
 
