@@ -65,3 +65,4 @@ make test
 - This template intentionally does not include Symfony sources in the repo.
 - To export the generated app into the repo, use `make export-app` (copies to `./app`).  
   Remove `/app/` from `.gitignore` if you want to commit it.
+- To replace the repo with the generated app and remove bootstrap files, use `make finalize`.

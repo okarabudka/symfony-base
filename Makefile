@@ -29,6 +29,8 @@ help:
 	@printf '		run phpstan\n'
 	@make print-color-green TEXT='export-app'
 	@printf '		export generated app to ./app\n'
+	@make print-color-green TEXT='finalize'
+	@printf '		export app to repo root and remove bootstrap files\n'
 
 up-containers:
 	@make docker-compose-exec COMPOSE_CMD="up -d --build"
@@ -63,6 +65,9 @@ phpstan:
 export-app:
 	@mkdir -p app
 	@docker compose run --rm -v "$$(pwd)/app:/export" app bash -c "cp -a /var/www/. /export"
+
+finalize:
+	@bash scripts/finalize.sh
 
 docker-exec:
 	@docker compose exec -it $(CONTAINER) $(CONTAINER_CMD)
