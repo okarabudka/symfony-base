@@ -11,8 +11,6 @@ help:
 	@make print-color-blue TEXT='** Available commands **\n\n'
 	@make print-color-green TEXT='up-containers'
 	@printf '		running docker containers\n'
-	@make print-color-green TEXT='up-prod'
-	@printf '		running production containers\n'
 	@make print-color-green TEXT='down'
 	@printf '		stop docker containers\n'
 	@make print-color-green TEXT='logs'
@@ -29,12 +27,11 @@ help:
 	@printf '		run php lint\n'
 	@make print-color-green TEXT='phpstan'
 	@printf '		run phpstan\n'
+	@make print-color-green TEXT='export-app'
+	@printf '		export generated app to ./app\n'
 
 up-containers:
 	@make docker-compose-exec COMPOSE_CMD="up -d --build"
-
-up-prod:
-	@make docker-compose-exec COMPOSE_CMD="-f docker-compose.yml -f docker-compose.prod.yml up -d --build"
 
 down:
 	@make docker-compose-exec COMPOSE_CMD="down"
@@ -62,6 +59,10 @@ lint:
 
 phpstan:
 	@make docker-exec CONTAINER="app" CONTAINER_CMD='bash -c "vendor/bin/phpstan analyse"'
+
+export-app:
+	@mkdir -p app
+	@docker compose run --rm -v "$$(pwd)/app:/export" app bash -c "cp -a /var/www/. /export"
 
 docker-exec:
 	@docker compose exec -it $(CONTAINER) $(CONTAINER_CMD)

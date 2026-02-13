@@ -12,21 +12,7 @@ RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local
 
 WORKDIR /var/www
 
-FROM base AS dev
+COPY docker/entrypoint/init-symfony.sh /usr/local/bin/init-symfony
 
-CMD ["php-fpm"]
-
-FROM base AS prod
-
-ENV APP_ENV=prod
-
-COPY . /var/www
-COPY docker/php/conf.d/prod/ /usr/local/etc/php/conf.d/
-
-RUN composer install --no-dev --classmap-authoritative --no-interaction --no-progress \
-    && composer dump-env prod \
-    && php bin/console cache:clear --no-warmup \
-    && php bin/console cache:warmup \
-    && chown -R www-data:www-data var
-
+ENTRYPOINT ["init-symfony"]
 CMD ["php-fpm"]

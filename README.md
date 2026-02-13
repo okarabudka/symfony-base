@@ -1,12 +1,11 @@
-# symfony-media-app
+# symfony-skeleton-bootstrap
 
-Simple Symfony 6.4 Media application
+Infrastructure-only repository that bootstraps a fresh Symfony skeleton on first run.
 
 ## Run project (dev)
 
 ```bash
 make up-containers
-make composer-install
 ```
 
 Optional services via profiles:
@@ -15,6 +14,7 @@ Optional services via profiles:
 docker compose --profile mail up -d
 docker compose --profile cache up -d
 docker compose --profile node up -d
+docker compose --profile mysql up -d
 ```
 
 ## Check availability
@@ -22,28 +22,35 @@ docker compose --profile node up -d
 - http://localhost:8080 → Symfony.
 - http://localhost:8025 → MailHog (only with `mail` profile).
 
-## Run project (prod build)
+## What happens on first start
 
-```bash
-make up-prod
-```
+When the `app` container starts and `/var/www` is empty, it automatically runs:
 
-Defaults can be overridden via `.env.local` (not committed). Useful variables:
+- `composer create-project symfony/skeleton`
+- installs `symfony/orm-pack` and `symfony/maker-bundle`
+- sets SQLite as the default DB in `.env.local`
+- creates the SQLite database
+
+The Symfony project is stored inside the `app_data` Docker volume (not in git).
+
+## Compose variables
+
+You can override ports and service settings via environment variables. Useful variables:
 
 - `APP_PORT`
-- `MYSQL_DATABASE`
-- `MYSQL_USER`
-- `MYSQL_PASSWORD`
-- `MYSQL_ROOT_PASSWORD`
-- `MYSQL_PORT`
+- `SYMFONY_VERSION` (default `6.4.*`)
+- `MYSQL_DATABASE` (only with `mysql` profile)
+- `MYSQL_USER` (only with `mysql` profile)
+- `MYSQL_PASSWORD` (only with `mysql` profile)
+- `MYSQL_ROOT_PASSWORD` (only with `mysql` profile)
+- `MYSQL_PORT` (only with `mysql` profile)
 - `REDIS_PORT`
 - `MAILHOG_HTTP_PORT`
 - `MAILHOG_SMTP_PORT`
 
 ## PHP settings
 
-Dev overrides: `docker/php/conf.d/dev` (mounted in dev).  
-Prod overrides: `docker/php/conf.d/prod` (baked into prod image).
+Dev overrides: `docker/php/conf.d/dev` (mounted in dev).
 
 ## Checks
 
@@ -53,10 +60,8 @@ make phpstan
 make test
 ```
 
-## CI
+## Notes
 
-GitHub Actions runs:
-
-- PHP lint
-- PHPUnit
-- PHPStan
+- This template intentionally does not include Symfony sources in the repo.
+- To export the generated app into the repo, use `make export-app` (copies to `./app`).  
+  Remove `/app/` from `.gitignore` if you want to commit it.
