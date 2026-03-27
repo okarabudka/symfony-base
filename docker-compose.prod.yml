@@ -4,24 +4,33 @@ services:
       context: .
       dockerfile: Dockerfile
       target: prod
+    restart: unless-stopped
     environment:
       APP_ENV: prod
-      DATABASE_URL: "mysql://${MYSQL_USER:-symfony}:${MYSQL_PASSWORD:-secret}@mysql:3306/${MYSQL_DATABASE:-app}?serverVersion=8.0"
+      APP_SECRET: ${APP_SECRET}
+      DATABASE_URL: "mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@mysql:3306/${MYSQL_DATABASE}?serverVersion=8.4"
     depends_on:
       mysql:
         condition: service_healthy
     volumes: []
 
   web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: nginx-prod
+    restart: unless-stopped
     ports:
       - "${APP_PORT:-8080}:80"
     volumes: []
+    depends_on:
+      - app
 
   mysql:
+    restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-app}
       MYSQL_USER: ${MYSQL_USER:-symfony}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-secret}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
-    ports:
-      - "${MYSQL_PORT:-3306}:3306"
+    # Port NOT exposed in prod — access only within Docker network

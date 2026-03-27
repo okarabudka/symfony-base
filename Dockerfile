@@ -1,4 +1,4 @@
-FROM php:8.2-fpm AS base
+FROM php:8.4-fpm AS base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip git curl libpng-dev libjpeg-dev libfreetype6-dev \
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && docker-php-ext-install pdo pdo_mysql gd intl opcache \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+COPY --from=composer/composer:2.8-bin /composer /usr/local/bin/composer
 
 WORKDIR /var/www
 
@@ -30,3 +30,8 @@ RUN composer install --no-dev --classmap-authoritative --no-interaction --no-pro
     && chown -R www-data:www-data var
 
 CMD ["php-fpm"]
+
+FROM nginx:alpine AS nginx-prod
+
+COPY --from=prod /var/www/public /var/www/public
+COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf

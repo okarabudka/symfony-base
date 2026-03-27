@@ -64,7 +64,7 @@ phpstan:
 	@make docker-exec CONTAINER="app" CONTAINER_CMD='bash -c "vendor/bin/phpstan analyse"'
 
 docker-exec:
-	@docker compose exec -it $(CONTAINER) $(CONTAINER_CMD)
+	@docker compose exec $(CONTAINER) $(CONTAINER_CMD)
 
 docker-compose-exec:
 	@docker compose $(COMPOSE_CMD)
