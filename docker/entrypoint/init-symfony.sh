@@ -15,6 +15,9 @@ if [ ! -f "$APP_DIR/.initialized" ]; then
     PACKAGE="symfony/skeleton"
   fi
 
+  # Clean any leftover files from a previous failed init
+  find "$APP_DIR" -mindepth 1 -delete
+
   composer create-project "$PACKAGE" . --no-interaction --no-progress
 
   composer require symfony/orm-pack --no-interaction --no-progress
@@ -24,7 +27,6 @@ if [ ! -f "$APP_DIR/.initialized" ]; then
 DATABASE_URL="sqlite:///%kernel.project_dir%/var/data.db"
 ENVLOCAL
 
-  php bin/console doctrine:database:create --if-not-exists
   php bin/console cache:clear
 
   chown -R www-data:www-data var
