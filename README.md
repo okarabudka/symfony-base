@@ -1,14 +1,48 @@
-# symfony-skeleton
+# symfony-skeleton-bootstrap
 
-Symfony 7.2 starter template with PHP 8.4, MySQL 8.4, Docker, PHPStan, PHPUnit and GitHub Actions CI.
+Infrastructure-only repository that bootstraps a fresh Symfony project on first container start.
+No Symfony source files are stored in git — the app lives in a Docker named volume.
 
-## Quick start (dev)
+## Quick start
 
 ```bash
-cp .env .env.local        # set APP_SECRET and adjust credentials if needed
 make up-containers
-make composer-install
-make migrate
+```
+
+That's it. On first start the `app` container automatically:
+
+1. Runs `composer create-project symfony/skeleton` (latest stable by default)
+2. Installs `symfony/orm-pack`, `symfony/maker-bundle`, `symfony/test-pack`, `phpstan/phpstan`
+3. Configures SQLite as the default database in `.env.local`
+4. Creates the database and clears the cache
+
+Wait **1–3 minutes** (composer download), then open http://localhost:8080
+Check progress: `make logs`
+
+## Choose Symfony version
+
+By default the latest stable Symfony is installed. To pin a specific version set it **before first run**:
+
+```bash
+SYMFONY_VERSION=7.2.* make up-containers
+```
+
+Or set it in `.env.local` before first run:
+
+```
+SYMFONY_VERSION=7.2.*
+```
+
+> **Note:** changing `SYMFONY_VERSION` has no effect after the volume is initialized.
+> To start fresh with a different version run `make reset`.
+
+## Optional services (via profiles)
+
+```bash
+docker compose --profile mysql up -d   # MySQL 8.4
+docker compose --profile mail  up -d   # Mailpit (SMTP testing)
+docker compose --profile cache up -d   # Redis
+docker compose --profile node  up -d   # Node.js 22
 ```
 
 ## URLs
@@ -16,77 +50,68 @@ make migrate
 - http://localhost:8080 → Symfony
 - http://localhost:8025 → Mailpit web UI (only with `mail` profile)
 
-## Optional services (via profiles)
-
-```bash
-docker compose --profile mail up -d    # Mailpit (SMTP testing)
-docker compose --profile cache up -d   # Redis
-docker compose --profile node up -d    # Node.js
-```
-
-## Production build
-
-Create `.env.local` with real values **before** building — these are baked into the image:
-
-```bash
-# .env.local (not committed)
-APP_SECRET=<random 32+ char string>
-MYSQL_USER=myapp
-MYSQL_PASSWORD=<strong password>
-MYSQL_ROOT_PASSWORD=<strong password>
-MYSQL_DATABASE=myapp
-```
-
-Then build and start:
-
-```bash
-make up-prod
-```
-
-The prod image is self-contained: static assets and compiled cache are baked in during build.
-`APP_SECRET` and `DATABASE_URL` are required at runtime — Docker will fail to start if they are unset.
-
-## PHP settings
-
-Dev overrides: `docker/php/conf.d/dev` (mounted in dev).
-Prod overrides: `docker/php/conf.d/prod` (baked into prod image).
-
-## Available make commands
+## Available commands
 
 ```bash
 make help
 ```
 
-## Code quality
+Key commands:
+
+| Command | Description |
+|---------|-------------|
+| `make up-containers` | Start containers, bootstrap on first run |
+| `make reset` | Destroy volume and re-bootstrap from scratch |
+| `make bash` | Shell inside app container |
+| `make migrate` | Run Doctrine migrations |
+| `make test` | PHPUnit |
+| `make phpstan` | Static analysis |
+| `make lint` | PHP syntax check |
+| `make export-app` | Copy generated app to `./app/` |
+| `make finalize` | **One-way**: replace repo with generated app (asks confirmation) |
+
+## Workflow: starting a new project
+
+1. Clone this repo into your new project folder
+2. `make up-containers` — wait for bootstrap
+3. Work on the Symfony app via `make bash`
+4. When ready to commit the app to git, run `make finalize`
+   - Copies the generated app from Docker volume to repo root
+   - Removes all bootstrap infrastructure files
+   - What remains is a plain Symfony project ready to commit
+
+## Switching from SQLite to MySQL
+
+By default the app uses SQLite. To switch to MySQL:
 
 ```bash
-make lint       # PHP syntax check
-make phpstan    # static analysis
-make test       # PHPUnit
+# 1. Start MySQL
+docker compose --profile mysql up -d
+
+# 2. Update DATABASE_URL inside the container
+make bash
+# Inside container:
+echo 'DATABASE_URL="mysql://symfony:secret@mysql:3306/app?serverVersion=8.4"' >> .env.local
+php bin/console doctrine:database:create
+php bin/console doctrine:migrations:migrate -n
+exit
 ```
+
+## PHP settings
+
+Dev overrides: `docker/php/conf.d/dev/` (mounted into container).
 
 ## Environment variables
 
-Override via `.env.local` (not committed to git):
-
-| Variable              | Default      | Description                          |
-|-----------------------|--------------|--------------------------------------|
-| `APP_SECRET`          | `REPLACE_ME` | **Must be changed** — random string  |
-| `APP_PORT`            | `8080`       | HTTP port exposed by nginx           |
-| `MYSQL_DATABASE`      | `app`        | Database name                        |
-| `MYSQL_USER`          | `symfony`    | Database user                        |
-| `MYSQL_PASSWORD`      | `secret`     | Database password                    |
-| `MYSQL_ROOT_PASSWORD` | `root`       | MySQL root password                  |
-| `MYSQL_PORT`          | `3306`       | MySQL port (for local tools)         |
-| `REDIS_PORT`          | `6379`       | Redis port                           |
-| `MAILPIT_HTTP_PORT`   | `8025`       | Mailpit web UI port                  |
-| `MAILPIT_SMTP_PORT`   | `1025`       | Mailpit SMTP port                    |
-| `ADMIN_EMAIL`         | —            | Admin email for Notifier alerts      |
-
-## CI
-
-GitHub Actions runs on every push and pull request:
-
-- PHP lint
-- PHPUnit
-- PHPStan
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SYMFONY_VERSION` | *(latest)* | Symfony version constraint, e.g. `7.2.*` |
+| `APP_PORT` | `8080` | HTTP port |
+| `MYSQL_DATABASE` | `app` | MySQL DB name (profile: mysql) |
+| `MYSQL_USER` | `symfony` | MySQL user (profile: mysql) |
+| `MYSQL_PASSWORD` | `secret` | MySQL password (profile: mysql) |
+| `MYSQL_ROOT_PASSWORD` | `root` | MySQL root password (profile: mysql) |
+| `MYSQL_PORT` | `3306` | MySQL host port (profile: mysql) |
+| `REDIS_PORT` | `6379` | Redis host port (profile: cache) |
+| `MAILPIT_HTTP_PORT` | `8025` | Mailpit web UI port (profile: mail) |
+| `MAILPIT_SMTP_PORT` | `1025` | Mailpit SMTP port (profile: mail) |

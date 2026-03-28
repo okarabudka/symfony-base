@@ -2,11 +2,5 @@
 /.idea
 /.env.local
 /.env.*.local
-/node_modules
-/vendor
-/var
-/public/bundles
-/public/assets
-/assets/vendor
-/phpunit.xml
-/.phpunit.result.cache
+/app
+/_export
