@@ -35,6 +35,7 @@ fi
 # Remove bootstrap-only files
 rm -rf \
   "$ROOT_DIR/docker" \
+  "$ROOT_DIR/docker-app" \
   "$ROOT_DIR/docker-compose.yml" \
   "$ROOT_DIR/Dockerfile" \
   "$ROOT_DIR/Makefile" \

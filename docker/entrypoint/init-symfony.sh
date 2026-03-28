@@ -27,6 +27,12 @@ if [ ! -f "$APP_DIR/.initialized" ]; then
 DATABASE_URL="sqlite:///%kernel.project_dir%/var/data.db"
 ENVLOCAL
 
+  # Remove Symfony's auto-generated compose files (we provide our own)
+  rm -f compose.yaml compose.override.yaml
+
+  # Copy standalone Docker setup into the app
+  cp -r /docker-app/. .
+
   php bin/console cache:clear
 
   chown -R www-data:www-data var

@@ -12,6 +12,7 @@ COPY --from=composer/composer:2-bin /composer /usr/local/bin/composer
 
 WORKDIR /var/www
 
+COPY docker-app/ /docker-app/
 COPY docker/entrypoint/init-symfony.sh /usr/local/bin/init-symfony
 RUN chmod +x /usr/local/bin/init-symfony
 
