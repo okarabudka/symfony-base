@@ -1,0 +1,31 @@
+#!/bin/sh
+# Adds an optional module to the generated project. Runs inside the PHP container (see `make module`).
+#   api   API Platform: REST/JSON-LD API with OpenAPI docs at /api
+#   auth  Security bundle with a Doctrine User entity (email + hashed password) and its migration
+set -eu
+
+cd "$(dirname "$0")/.."
+
+case "${1:-}" in
+    api)
+        [ -f config/packages/api_platform.yaml ] && { echo "api: already installed"; exit 0; }
+        composer require --no-interaction api-platform/symfony api-platform/doctrine-orm
+        ;;
+    auth)
+        [ -f src/Entity/User.php ] && { echo "auth: already installed"; exit 0; }
+        composer require --no-interaction symfony/security-bundle
+        # MakerBundle wires the user provider into security.yaml; the entity and repository come from the template.
+        php bin/console make:user User --is-entity --identity-property-name=email --with-password --no-interaction
+        cp -R bin/modules/auth/. .
+        php bin/console make:migration --no-interaction
+        ;;
+    *)
+        echo "Unknown module '${1:-}'. Available: api, auth" >&2
+        exit 1
+        ;;
+esac
+
+# Generated code follows the project's code style.
+vendor/bin/php-cs-fixer fix --quiet
+
+echo "Module $1 installed."

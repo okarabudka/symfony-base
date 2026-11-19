@@ -1,110 +1,211 @@
+<!-- symfony-base template readme -->
 # symfony-base
 
-An infrastructure-only repository that creates a fresh Symfony project inside Docker on first start and can then hand it over as a plain Symfony repository.
+[![CI](https://github.com/okarabudka/symfony-base/actions/workflows/ci.yml/badge.svg)](https://github.com/okarabudka/symfony-base/actions/workflows/ci.yml)
 
-## Context
+A starter kit for new Symfony projects that always starts from the newest Symfony release. The repository holds no
+Symfony code. It holds the setup every new project needs before its first feature: a Docker environment, quality
+checks, CI and a production build. On the first `make up` it installs the latest Symfony and applies that setup on
+top. It is the Symfony counterpart of [laravel-base](https://github.com/okarabudka/laravel-base) and uses the same
+commands.
 
-A personal starter template by Oleksandr Karabudka. It started in May 2025 as a Symfony project with a Docker setup; in February and March 2026 it was reworked into a bootstrap repository: the Symfony application files were removed from git, a production and development Docker setup with a CI template was added, and a `finalize` command was introduced. The goal is to start every new Symfony project from the current stable version with the same Docker environment, Doctrine, testing and static analysis already in place.
+## Why it exists
 
-## Features
+Every new Symfony project starts with the same work: a Docker setup that does not fight file permissions, the right
+set of packs, PHPStan and a code style tool, CI, sensible defaults, and eventually a way to run it in production.
+Each project ends up solving this a little differently.
 
-- First start runs `composer create-project symfony/skeleton` inside the `app` container (latest stable, or a pinned version via `SYMFONY_VERSION`).
-- Automatic setup after install: `symfony/orm-pack`, and as dev dependencies `symfony/maker-bundle`, `symfony/test-pack` and `phpstan/phpstan`; SQLite configured as the default database in `.env.local`; cache cleared.
-- Health check on an `.initialized` marker; nginx starts only after the app is ready.
-- Optional services through Docker Compose profiles: MySQL 8.4, Mailpit, Redis, Node.js 22.
-- Makefile commands for Composer, Doctrine migrations, PHPUnit, syntax check and PHPStan.
-- `make export-app` copies the generated app to `./app/` for review.
-- `make finalize` (one-way, asks for confirmation) replaces the repository content with the generated app, which then contains its own `Dockerfile`, `docker-compose.yml` and GitHub Actions CI.
+symfony-base makes those decisions once. A template with a committed skeleton falls behind the framework. This one
+installs the current Symfony release every time you start a project, so you never begin on an outdated version.
 
-## Tech stack
+## How it works
 
-- PHP 8.4 (FPM) with pdo_mysql, gd, intl, opcache, zip; Composer 2
-- Symfony (latest stable by default), Doctrine ORM, MakerBundle, PHPUnit, PHPStan
-- nginx, SQLite (default), optional MySQL 8.4, Redis, Mailpit, Node.js 22
-- Docker Compose, Makefile, Bash
-- GitHub Actions (CI template for the generated app)
+1. `make up` runs `bin/generate` in the PHP container. It creates a project from the newest `symfony/skeleton` in a
+   temporary directory and installs the packs listed below; Flex recipes configure them.
+2. The template is applied to that fresh project:
+   - `overlay/` adds the template's own files: the start page, the health check, request ids, the production command
+     guard, the tests and the tool configuration;
+   - `bin/patch-skeleton.php` makes small, anchored edits to recipe files: SQLite and Mailpit in `.env`, no secret in
+     `.env.dev`, Composer scripts for the make targets.
+3. The finished project moves into the repository root. If any step fails, the root is left untouched.
+4. Every later `make up` just starts the containers.
 
-## Architecture
+In this repository the generated files are git-ignored. `make init` turns a copy into your own project. From then on
+the generated code is ordinary project code that you commit.
 
-- `Dockerfile` builds the PHP image with dev and OPcache settings baked in; its entrypoint `docker/entrypoint/init-symfony.sh` bootstraps Symfony into the `app_data` named volume on first run and then starts PHP-FPM.
-- `docker/nginx` builds the web server image that serves the same volume.
-- `docker-app/` holds the files that are copied into the generated app: a standalone `Dockerfile`, `docker-compose.yml`, nginx config and `.github/workflows/ci.yml` (composer validate, lint, PHPStan, PHPUnit).
-- `scripts/finalize.sh` exports the app from the volume with host file ownership, checks that `composer.json` exists, removes all bootstrap files and copies the app to the repository root.
+CI generates a fresh project on every push and once a week. If a new Symfony release changes a recipe the template
+relies on, a patch anchor stops generation and CI turns red, instead of producing a half-configured project.
 
-## Getting started
+To pin a version: `SYMFONY_VERSION=8.1.* make up`.
 
-Requires Docker, Docker Compose and make.
+## What you get
 
-```bash
-make up-containers   # build and start; first run installs Symfony (1 to 3 minutes)
-make logs            # follow progress
-```
+**A working project in minutes.** The latest Symfony on PHP 8.5 with Twig, Doctrine ORM and migrations,
+AssetMapper (no Node build), Mailer, Messenger, Scheduler and Monolog. SQLite by default. `make up` creates the TLS
+certificate and a generated `APP_SECRET` in `.env.local`, builds the containers, installs dependencies and runs
+migrations. You only need Docker, make and openssl on your machine.
 
-Open http://localhost:8080 (port configurable with `APP_PORT`). With the `mail` profile, Mailpit is at http://localhost:8025.
+**A local environment close to production.** Nginx with HTTPS, PHP-FPM and Mailpit to catch outgoing mail.
+MariaDB and Redis are one profile away. Containers run as your user, so files created inside them stay editable on
+the host.
 
-Pin a Symfony version before the first run (or after `make reset`), either on the command line or in `.env.local`:
+**Observability from day one.** In production, logs go to stderr as JSON. Every request gets an `X-Request-Id` that
+appears in all of its log entries. `/health` checks the database, cache and message queue and returns 503 when one of
+them fails.
 
-```bash
-SYMFONY_VERSION=7.2.* make up-containers
-```
+**Quality checks from the first commit.**
+- PHPUnit; deprecations, notices and warnings fail the suite.
+- PHP CS Fixer with the Symfony rule set.
+- PHPStan at the strictest level with the Symfony, Doctrine and PHPUnit extensions, tests included.
+- `lint:container`, `lint:yaml`, `lint:twig` and Doctrine mapping validation.
+- Code coverage with an 80 % minimum and mutation testing with Infection (70 % covered MSI).
 
-Optional services:
+**Strict defaults.** Twig fails on unknown variables in every environment. `doctrine:database:drop`,
+`doctrine:schema:drop` and `doctrine:fixtures:load` are blocked in production. Tests cover each of these.
 
-```bash
-docker compose --profile mysql up -d   # MySQL 8.4
-docker compose --profile mail up -d    # Mailpit
-docker compose --profile cache up -d   # Redis
-docker compose --profile node up -d    # Node.js 22
-```
+**A path to production.** The Dockerfile builds a production PHP-FPM image without dev dependencies, with an
+authoritative class map, OPcache and compiled assets, an Nginx image for the public files, and a single-container
+image for Kamal. `compose.prod.yaml` runs them with a Messenger worker and the scheduler, with health checks on every
+service.
 
-Switch from SQLite to MySQL:
+## How to use it
 
-```bash
-docker compose --profile mysql up -d
-make bash
-# inside the container:
-echo 'DATABASE_URL="mysql://symfony:secret@mysql:3306/app?serverVersion=8.4"' >> .env.local
-php bin/console doctrine:database:create
-php bin/console doctrine:migrations:migrate -n
-```
+### Start a new project
 
-| Variable | Default | Description |
-|---|---|---|
-| `SYMFONY_VERSION` | latest | Symfony version constraint, e.g. `7.2.*` |
-| `APP_PORT` | `8080` | HTTP port |
-| `MYSQL_DATABASE` | `app` | MySQL database (profile `mysql`) |
-| `MYSQL_USER` | `symfony` | MySQL user (profile `mysql`) |
-| `MYSQL_PASSWORD` | `secret` | MySQL password (profile `mysql`) |
-| `MYSQL_ROOT_PASSWORD` | `root` | MySQL root password (profile `mysql`) |
-| `MYSQL_PORT` | `3306` | MySQL host port (profile `mysql`) |
-| `REDIS_PORT` | `6379` | Redis host port (profile `cache`) |
-| `MAILPIT_HTTP_PORT` | `8025` | Mailpit web UI port (profile `mail`) |
-| `MAILPIT_SMTP_PORT` | `1025` | Mailpit SMTP port (profile `mail`) |
-
-Other commands: `make down`, `make reset` (delete the volume and bootstrap again), `make bash`, `make composer ARGS="require foo"`, `make migrate`, `make help`.
-
-When ready to build the actual project:
+Click **Use this template** on GitHub (or clone this repository), then:
 
 ```bash
-make export-app   # preview the app in ./app/
-make finalize     # one-way: replace the repository with the generated app
+git clone <your-repository-url> my-app && cd my-app
+make init NAME=my-app
+make up
+git add -A && git commit -m "Start my-app from symfony-base"
 ```
 
-## Testing
+`make init` generates the project if needed and renames it:
+- sets `APP_NAME`;
+- sets the Composer name (`<github-owner>/my-app`);
+- sets the service and image names in the Kamal configuration;
+- replaces this README with a short project README that carries your CI badge;
+- removes the template's git-ignore block, so the generated code becomes part of your project.
 
-The repository itself has no tests. For the generated app:
+Optional modules can be added at the same time or later:
 
 ```bash
-make test      # php bin/phpunit
-make lint      # php -l on src/ and tests/
-make phpstan   # PHPStan
+make init NAME=my-app WITH=api,auth
+make module M=api
 ```
 
-After `finalize`, the same checks run in GitHub Actions.
+| Module | What it adds                                                                   |
+|--------|--------------------------------------------------------------------------------|
+| `api`  | API Platform with OpenAPI documentation at `/api`                              |
+| `auth` | Security bundle with a Doctrine `User` entity (email, hashed password) and its migration |
+
+### Open in Codespaces
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/okarabudka/symfony-base)
+
+The dev container generates the project, starts PHP, Nginx and Mailpit and forwards the app (HTTPS) and Mailpit.
+
+### Just try it
+
+```bash
+git clone https://github.com/okarabudka/symfony-base.git && cd symfony-base
+make up
+```
+
+Open https://localhost:8443 (self-signed certificate, accept the browser warning) and Mailpit at http://localhost:8025.
+If a port is taken, change `HTTP_PORT`, `HTTPS_PORT` or `MAILPIT_PORT` in `.env` (docker compose reads that file)
+and run `make up` again.
+
+### Day-to-day work
+
+| Target                | What it does                                                          |
+|-----------------------|-----------------------------------------------------------------------|
+| `make init`           | Turn the copy into your project: `make init NAME=my-app [VENDOR=acme] [WITH=api,auth]` |
+| `make module`         | Add a module later: `make module M=api\|auth`                         |
+| `make sync-template`  | Show template changes; `APPLY=1` takes over infrastructure files      |
+| `make up`             | Generate on first run, then start containers, install, migrate        |
+| `make down`           | Stop and remove containers                                            |
+| `make sh`             | Open a shell in the PHP container                                     |
+| `make test`           | Run the test suite (PHPUnit)                                          |
+| `make coverage`       | Tests with code coverage (fails below 80 %)                           |
+| `make mutate`         | Mutation testing with Infection (fails below 70 % covered MSI)        |
+| `make lint`           | PHP CS Fixer, PHPStan, container/YAML/Twig lint, Doctrine mapping     |
+| `make fix`            | Fix code style                                                        |
+| `make help`           | List all targets                                                      |
+
+### Keep up with the template
+
+`make sync-template` downloads the current template and lists infrastructure files (Docker, Makefile, CI, dev
+container, scripts) that are new or changed, plus application files the template provides. `make sync-template
+APPLY=1` takes over the infrastructure files. Your own files stay, and application code is never overwritten.
+
+## Development services and ports
+
+| Service | Image                       | Port (host)                     |
+|---------|-----------------------------|---------------------------------|
+| web     | `nginx:1.27-alpine`         | 8443 (HTTPS), 8080 (HTTP)       |
+| php     | `docker/php/Dockerfile`     | —                               |
+| mail    | `axllent/mailpit`           | 8025 (UI), SMTP inside network  |
+| db      | `mariadb:11.4` (`full`)     | —                               |
+| redis   | `redis:7-alpine` (`full`)   | —                               |
+
+To use MariaDB, run `docker compose --profile full up -d` and set `DATABASE_URL` in `.env.local` (an example is in
+`.env`).
+
+## Production
+
+`docker/php/Dockerfile` has three production targets: `app` (PHP-FPM), `web` (Nginx with the compiled assets) and
+`server` (both in one container, for Kamal). `compose.prod.yaml` runs `app` and `web` with a Messenger worker and the
+scheduler:
+
+```bash
+echo "APP_SECRET=$(openssl rand -hex 16)" > .env.local
+docker compose -f compose.prod.yaml up -d --build --wait
+curl http://localhost:8080/health
+```
+
+On start, the `app` container runs migrations, sets up the Messenger transports and warms the cache. TLS is expected
+to terminate in front of `web`.
+
+### Deploy with Kamal
+
+Every project ships a [Kamal](https://kamal-deploy.org) configuration in `config/deploy.yml`:
+
+```bash
+# set the server address and domain in config/deploy.yml, then:
+export KAMAL_REGISTRY_PASSWORD=<GitHub token with write:packages> APP_SECRET=<random hex>
+kamal setup     # first time
+kamal deploy    # every release
+```
+
+Kamal runs three roles from the `server` image: `web` (runs migrations), `worker` and `scheduler`.
+
+### Images on GitHub Container Registry
+
+Pushing a tag such as `v1.2.0` builds and publishes `ghcr.io/<owner>/<repo>` (for Kamal) and
+`ghcr.io/<owner>/<repo>-app` / `-web` (for `compose.prod.yaml`).
+
+## Repository layout
+
+```
+bin/generate               installs the latest Symfony and applies the template
+bin/patch-skeleton.php     anchored edits to recipe files
+bin/init                   turns a copy into your project
+bin/module                 optional modules (api, auth)
+bin/sync-template          compares a project with the current template
+overlay/                   files the template adds to every project
+docker/php/Dockerfile      dev, app, web and server targets
+docker/conf/               Nginx, MariaDB and TLS configuration
+docker-compose.yml         local development stack
+compose.prod.yaml          production-like stack with worker and scheduler
+.github/                   CI, release workflow and Dependabot
+.devcontainer/             Codespaces and VS Code dev container
+```
 
 ## Status
 
-Personal starter template (2025 to 2026), last changed in March 2026.
+Maintained.
 
 ## License
 

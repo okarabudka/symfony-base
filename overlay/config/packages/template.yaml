@@ -1,0 +1,21 @@
+# Defaults added by symfony-base.
+framework:
+    messenger:
+        failure_transport: failed
+        transports:
+            async:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                retry_strategy:
+                    max_retries: 3
+            failed: 'doctrine://default?queue_name=failed'
+
+twig:
+    # Unknown variables fail loudly in every environment, not only in tests.
+    strict_variables: true
+
+when@test:
+    framework:
+        messenger:
+            transports:
+                async: 'in-memory://'
+                failed: 'in-memory://'

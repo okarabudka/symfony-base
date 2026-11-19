@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+*.css diff=css
+*.html diff=html
+*.md diff=markdown
+*.php diff=php
+*.twig diff=html
+
+*.sh text eol=lf

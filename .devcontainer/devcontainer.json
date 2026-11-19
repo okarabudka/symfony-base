@@ -1,0 +1,27 @@
+{
+    "name": "symfony-base",
+    "dockerComposeFile": ["../docker-compose.yml"],
+    "service": "php",
+    "runServices": ["php", "web", "mail"],
+    "workspaceFolder": "/var/www",
+    "remoteUser": "app",
+    "initializeCommand": "make certs app env",
+    "postCreateCommand": "composer install --no-interaction && php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration && php bin/console messenger:setup-transports --no-interaction",
+    "forwardPorts": ["web:443", "mail:8025"],
+    "portsAttributes": {
+        "web:443": { "label": "App (HTTPS)", "protocol": "https" },
+        "mail:8025": { "label": "Mailpit" }
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "TheNouillet.symfony-vscode",
+                "bmewburn.vscode-intelephense-client",
+                "EditorConfig.EditorConfig"
+            ]
+        },
+        "codespaces": {
+            "openFiles": ["README.md"]
+        }
+    }
+}

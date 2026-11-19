@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # Weekly: generate from the newest Symfony release to catch upstream changes early.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate the latest Symfony and start the stack
+        run: make up
+      - name: Generated files stay out of the template repository
+        run: test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }
+      - run: make lint
+      - name: Tests with coverage
+        run: |
+          set -o pipefail
+          make coverage | tee coverage.txt
+      - name: Mutation testing
+        run: |
+          set -o pipefail
+          make mutate | tee mutations.txt
+      - name: Report
+        if: always()
+        run: |
+          {
+            echo '### Coverage'
+            echo '```'
+            sed 's/\x1b\[[0-9;]*m//g' coverage.txt | grep -E '%|Total' || true
+            echo '```'
+            echo '### Mutation testing'
+            echo '```'
+            sed 's/\x1b\[[0-9;]*m//g' mutations.txt | grep -E 'Mutations:|Score:' || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - run: curl -kfsS https://localhost:8443/health
+      - run: curl -fsS -o /dev/null http://localhost:8025
+      - if: failure()
+        run: docker compose logs
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  new-project:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialise as a new project
+        run: make init NAME=demo-app VENDOR=acme WITH=api,auth
+      - run: grep -qx 'APP_NAME=demo-app' .env
+      - run: grep -q 'acme/demo-app' composer.json
+      - name: Generated files are now part of the project
+        run: git status --porcelain | grep -q 'composer.json'
+      - run: make up
+      - run: curl -kfsS https://localhost:8443/ | grep -q '<title>demo-app</title>'
+      - run: make test
+      - run: make lint
+
+  production:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make app
+      - name: Production environment
+        run: |
+          echo "APP_SECRET=$(openssl rand -hex 16)" > .env.local
+      - run: docker compose -f compose.prod.yaml up -d --build --wait
+      - run: curl -fsS http://localhost:8080/health
+      - run: curl -fsS http://localhost:8080/ | grep -q '/assets/'
+      - name: Single-container image for Kamal
+        run: |
+          docker build -f docker/php/Dockerfile --target server -t app-server .
+          docker run -d --name app-server -p 8081:80 --env-file .env.local -e RUN_MIGRATIONS=true \
+            -e DATABASE_URL=sqlite:////var/www/database/data.db app-server
+          for _ in $(seq 1 30); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' app-server)" = healthy ] && break
+            sleep 2
+          done
+          curl -fsS http://localhost:8081/health
+      - if: failure()
+        run: docker compose -f compose.prod.yaml logs

@@ -1,0 +1,59 @@
+#!/bin/sh
+# Compares this project with the current symfony-base template.
+#   bin/sync-template           list template files that are new or changed
+#   APPLY=1 bin/sync-template   take over the template's infrastructure files
+# Application code is never overwritten: files the template adds to the app (overlay/) are only listed.
+# Files the project added itself (own workflows, scripts) are left alone.
+# TEMPLATE may point to another clone URL or a local path.
+set -eu
+
+cd "$(dirname "$0")/.."
+
+template=${TEMPLATE:-https://github.com/okarabudka/symfony-base.git}
+infra="Makefile docker docker-compose.yml compose.prod.yaml .dockerignore .devcontainer .github bin/generate bin/patch-skeleton.php bin/patch-file.php bin/init bin/sync-template bin/module bin/modules overlay"
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+git clone --quiet "$template" "$tmp/template"
+rev=$(git -C "$tmp/template" rev-parse --short HEAD)
+
+# Prints "new <file>" or "changed <file>" for every template file under $1 that differs locally.
+compare() {
+    (cd "$tmp/template/$1" && find . -type f | sed 's#^\./##' | sort) | while read -r file; do
+        if [ ! -f "$2$file" ]; then
+            echo "new     $2$file"
+        elif ! cmp -s "$2$file" "$tmp/template/$1/$file"; then
+            echo "changed $2$file"
+        fi
+    done
+}
+
+: > "$tmp/infra.txt"
+for path in $infra; do
+    if [ -d "$tmp/template/$path" ]; then
+        compare "$path" "$path/" >> "$tmp/infra.txt"
+    elif [ -f "$tmp/template/$path" ]; then
+        if [ ! -f "$path" ]; then echo "new     $path"; elif ! cmp -s "$path" "$tmp/template/$path"; then echo "changed $path"; fi >> "$tmp/infra.txt"
+    fi
+done
+
+echo "==> Infrastructure (template $rev)"
+if [ -s "$tmp/infra.txt" ]; then sed 's/^/  /' "$tmp/infra.txt"; else echo "  up to date"; fi
+
+echo "==> Application files the template provides (review and merge by hand)"
+compare overlay "" | sed 's/^/  /'
+
+if [ ! -s "$tmp/infra.txt" ]; then
+    exit 0
+fi
+
+if [ "${APPLY:-0}" = "1" ]; then
+    awk '{print $2}' "$tmp/infra.txt" | while read -r file; do
+        mkdir -p "$(dirname "$file")"
+        cp "$tmp/template/$file" "$file"
+    done
+    echo "Infrastructure updated to template $rev. Review with git diff and commit."
+else
+    echo "Run 'make sync-template APPLY=1' to take over the infrastructure files listed above."
+fi

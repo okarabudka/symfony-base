@@ -1,0 +1,14 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ app_name }}{% endblock %}
+
+{% block body %}
+    <main style="font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto; line-height: 1.5;">
+        <h1>{{ app_name }}</h1>
+        <p>Symfony is running. Start in <code>src/Controller</code> and <code>templates/</code>.</p>
+        <ul>
+            <li><a href="{{ path('health') }}">/health</a> — database, cache and queue status</li>
+            <li><a href="http://localhost:8025">Mailpit</a> — outgoing mail in development</li>
+        </ul>
+    </main>
+{% endblock %}
