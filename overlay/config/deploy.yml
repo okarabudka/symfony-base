@@ -1,0 +1,50 @@
+# Kamal 2 deployment: `kamal setup` once, then `kamal deploy`. See https://kamal-deploy.org
+# Replace the hosts and the domain; `make init` sets the service and image names.
+service: symfony-base
+image: okarabudka/symfony-base
+
+servers:
+  web:
+    hosts:
+      - 192.0.2.10
+    env:
+      clear:
+        RUN_MIGRATIONS: "true"
+  worker:
+    hosts:
+      - 192.0.2.10
+    cmd: php bin/console messenger:consume async --time-limit=3600 --no-interaction
+  scheduler:
+    hosts:
+      - 192.0.2.10
+    cmd: php bin/console messenger:consume scheduler_default --time-limit=3600 --no-interaction
+
+proxy:
+  ssl: true
+  host: app.example.com
+  app_port: 80
+  healthcheck:
+    path: /health
+
+registry:
+  server: ghcr.io
+  username: okarabudka
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+
+builder:
+  arch: amd64
+  dockerfile: docker/php/Dockerfile
+  target: server
+
+env:
+  clear:
+    APP_ENV: prod
+    DEFAULT_URI: https://app.example.com
+    DATABASE_URL: sqlite:////var/www/database/data.db
+  secret:
+    - APP_SECRET
+
+volumes:
+  - share:/var/www/var/share
+  - database:/var/www/database

@@ -1,0 +1,62 @@
+# Production-like stack: docker compose -f compose.prod.yaml up -d --build --wait
+# Requires APP_SECRET in .env.local or the environment; TLS is expected to terminate in front of `web`.
+
+name: symfony-base-prod
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: docker/php/Dockerfile
+    target: app
+  image: symfony-base-app
+  env_file:
+    - path: .env.local
+      required: false
+  environment: &app-env
+    APP_ENV: prod
+    DATABASE_URL: sqlite:////var/www/database/data.db
+  volumes:
+    - var:/var/www/var/share
+    - database:/var/www/database
+  restart: unless-stopped
+
+services:
+  app:
+    <<: *app
+    environment:
+      <<: *app-env
+      RUN_MIGRATIONS: "true"
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: web
+    ports:
+      - ${HTTP_PORT:-8080}:80
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    <<: *app
+    command: ["php", "bin/console", "messenger:consume", "async", "--time-limit=3600", "--no-interaction"]
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "messenger:consume async"]
+    depends_on:
+      app:
+        condition: service_healthy
+
+  scheduler:
+    <<: *app
+    command: ["php", "bin/console", "messenger:consume", "scheduler_default", "--time-limit=3600", "--no-interaction"]
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "messenger:consume scheduler_default"]
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  var:
+  database:

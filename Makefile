@@ -1,88 +1,64 @@
-# Makefile
+# Makefile — local Docker workflow. Run `make help` for the list of targets.
 
-SHELL = /bin/bash
+SHELL := /bin/bash
+.DEFAULT_GOAL := help
 
-ifndef VERBOSE
-MAKEFLAGS += --no-print-directory
-endif
+export UID := $(shell id -u)
+export GID := $(shell id -g)
 
-help:
-	@printf '		'
-	@make print-color-blue TEXT='** Available commands **\n\n'
-	@make print-color-green TEXT='up-containers'
-	@printf '		start containers (bootstraps Symfony on first run)\n'
-	@make print-color-green TEXT='down'
-	@printf '		stop containers\n'
-	@make print-color-green TEXT='reset'
-	@printf '		destroy volume and re-bootstrap Symfony from scratch\n'
-	@make print-color-green TEXT='logs'
-	@printf '		show container logs\n'
-	@make print-color-green TEXT='bash'
-	@printf '		open shell in app container\n'
-	@make print-color-green TEXT='composer'
-	@printf '		run composer command (ARGS="require foo")\n'
-	@make print-color-green TEXT='migrate'
-	@printf '		run doctrine migrations\n'
-	@make print-color-green TEXT='test'
-	@printf '		run PHPUnit\n'
-	@make print-color-green TEXT='lint'
-	@printf '		PHP syntax check\n'
-	@make print-color-green TEXT='phpstan'
-	@printf '		static analysis\n'
-	@make print-color-green TEXT='export-app'
-	@printf '		copy generated app to ./app\n'
-	@make print-color-green TEXT='finalize'
-	@printf '		replace repo with generated app and remove bootstrap files\n'
+COMPOSE := docker compose
+comma := ,
+# -T keeps exec usable without a TTY (CI, scripts).
+EXEC := $(COMPOSE) exec -T php
 
-up-containers:
-	@make docker-compose-exec COMPOSE_CMD="up -d --build"
+.PHONY: help init module app sync-template certs env up down sh test coverage mutate lint fix
 
-down:
-	@make docker-compose-exec COMPOSE_CMD="down"
+help: ## Show this help
+	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-8s\033[0m %s\n", $$1, $$2}'
 
-reset:
-	@make docker-compose-exec COMPOSE_CMD="down"
-	@docker volume rm $$(docker compose config 2>/dev/null | awk '/^name:/ {print $$2 "_app_data"}') 2>/dev/null || true
-	@make docker-compose-exec COMPOSE_CMD="up -d --build"
+init: app ## Turn this copy into your project: make init NAME=my-app [VENDOR=acme] [WITH=api,auth]
+	@sh bin/init "$(NAME)" "$(VENDOR)"
+	@for m in $(subst $(comma), ,$(WITH)); do $(MAKE) --no-print-directory module M=$$m || exit 1; done
 
-logs:
-	@make docker-compose-exec COMPOSE_CMD="logs -f --tail=200"
+module: ## Add an optional module later: make module M=api|auth
+	@test -n "$(M)" || { echo "Usage: make module M=api|auth"; exit 1; }
+	$(COMPOSE) run --rm --no-deps php sh bin/module $(M)
 
-composer:
-	@make docker-exec CONTAINER="app" CONTAINER_CMD='bash -c "composer $(ARGS)"'
+app: ## Install the latest Symfony and apply the template (first run only)
+	@test -f bin/console || { $(COMPOSE) build php && $(COMPOSE) run --rm --no-deps php sh bin/generate; }
 
-bash:
-	@make docker-exec CONTAINER="app" CONTAINER_CMD='bash'
+sync-template: ## Show template changes since this project started; APPLY=1 takes over infrastructure
+	@sh bin/sync-template
 
-migrate:
-	@make docker-exec CONTAINER="app" CONTAINER_CMD='bash -c "php bin/console doctrine:migrations:migrate -n"'
+certs: ## Create a self-signed TLS certificate (skipped if present)
+	@sh docker/conf/ssl/generate.sh
 
-test:
-	@make docker-exec CONTAINER="app" CONTAINER_CMD='bash -c "php bin/phpunit"'
+env: ## Create .env.local with a generated APP_SECRET (skipped if present)
+	@test -f .env.local || printf 'APP_SECRET=%s\n' "$$(openssl rand -hex 16)" > .env.local
 
-lint:
-	@make docker-exec CONTAINER="app" CONTAINER_CMD='bash -c "find src tests -name \"*.php\" -print0 | xargs -0 -n1 php -l"'
+up: certs app env ## Build and start containers, install dependencies, migrate
+	$(COMPOSE) up -d --build
+	$(EXEC) composer install --no-interaction
+	$(EXEC) php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
+	$(EXEC) php bin/console messenger:setup-transports --no-interaction
 
-phpstan:
-	@make docker-exec CONTAINER="app" CONTAINER_CMD='bash -c "vendor/bin/phpstan analyse"'
+down: ## Stop and remove containers
+	$(COMPOSE) down
 
-export-app:
-	@mkdir -p app
-	@docker compose run --rm --entrypoint sh \
-		-v "$$(pwd)/app:/export" app \
-		-c "cp -a /var/www/. /export && rm -f /export/.initialized && chown -R $$(id -u):$$(id -g) /export"
+sh: ## Open a shell in the PHP container
+	$(COMPOSE) exec php sh
 
-finalize:
-	@bash scripts/finalize.sh
+test: ## Run the test suite (PHPUnit)
+	$(EXEC) composer test
 
-docker-exec:
-	@docker compose exec $(CONTAINER) $(CONTAINER_CMD)
+coverage: ## Run the tests with code coverage (fails below 80 %)
+	$(EXEC) composer coverage
 
-docker-compose-exec:
-	@docker compose $(COMPOSE_CMD)
+mutate: ## Run mutation testing with Infection (fails below 70 % MSI)
+	$(EXEC) composer mutate
 
-print-color-green:
-	@printf '\033[0;32m${TEXT}\033[0m'
+lint: ## Code style (PHP CS Fixer), PHPStan, container/YAML/Twig lint, Doctrine mapping
+	$(EXEC) composer lint
 
-print-color-blue:
-	@printf '\033[0;36m${TEXT}\033[0m'
+fix: ## Fix code style (PHP CS Fixer)
+	$(EXEC) composer fix

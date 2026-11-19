@@ -1,0 +1,57 @@
+#!/bin/sh
+# Installs the latest Symfony and applies this template on top of it.
+# Runs inside the PHP container (see `make app`); does nothing once `bin/console` exists.
+# Pin a version with SYMFONY_VERSION, e.g. SYMFONY_VERSION=8.1.* make up
+set -eu
+
+root=$(cd "$(dirname "$0")/.." && pwd)
+cd "$root"
+
+if [ -f bin/console ]; then
+    exit 0
+fi
+
+package="symfony/skeleton"
+[ -n "${SYMFONY_VERSION:-}" ] && package="symfony/skeleton:${SYMFONY_VERSION}"
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+app="$tmp/app"
+
+# Build the whole project in a temporary directory, so a failure leaves the root untouched.
+echo "==> Downloading $package"
+composer create-project --no-interaction --prefer-dist "$package" "$app"
+
+cd "$app"
+composer config extra.symfony.docker false
+composer config --no-plugins allow-plugins.phpstan/extension-installer false
+composer config --no-plugins allow-plugins.infection/extension-installer true
+
+echo "==> Installing packages"
+composer require --no-interaction \
+    symfony/twig-bundle symfony/orm-pack symfony/asset-mapper symfony/mailer symfony/messenger \
+    symfony/doctrine-messenger symfony/scheduler symfony/monolog-bundle symfony/uid
+composer require --dev --no-interaction \
+    symfony/test-pack symfony/maker-bundle friendsofphp/php-cs-fixer infection/infection \
+    phpstan/phpstan phpstan/phpstan-symfony phpstan/phpstan-doctrine phpstan/phpstan-phpunit
+
+echo "==> Applying the template"
+cp -R "$root/overlay/." "$app/"
+php "$root/bin/patch-skeleton.php"
+cd "$root"
+
+# Move the project into place. Files the template already has (README, .gitignore, ...) stay;
+# directories that exist on both sides (bin/) are merged file by file.
+for entry in "$app"/* "$app"/.[!.]*; do
+    [ -e "$entry" ] || continue
+    name=$(basename "$entry")
+    if [ ! -e "$root/$name" ]; then
+        mv "$entry" "$root/$name"
+    elif [ -d "$entry" ] && [ -d "$root/$name" ]; then
+        for file in "$entry"/*; do
+            [ -e "$root/$name/$(basename "$file")" ] || mv "$file" "$root/$name/"
+        done
+    fi
+done
+
+echo "==> $(php bin/console --version --no-ansi) is ready"
