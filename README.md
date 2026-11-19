@@ -1,4 +1,4 @@
-# Symfony-Skeleton-Bootstrap
+# symfony-base
 
 An infrastructure-only repository that creates a fresh Symfony project inside Docker on first start and can then hand it over as a plain Symfony repository.
 
