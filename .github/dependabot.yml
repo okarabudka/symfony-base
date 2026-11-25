@@ -4,13 +4,26 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    groups:
+      all:
+        patterns: ["*"]
 
   - package-ecosystem: docker
     directory: /docker/php
     schedule:
       interval: monthly
+    groups:
+      all:
+        patterns: ["*"]
 
+  # MariaDB stays on an LTS release: major upgrades are deliberate.
   - package-ecosystem: docker-compose
     directory: /
     schedule:
       interval: monthly
+    groups:
+      all:
+        patterns: ["*"]
+    ignore:
+      - dependency-name: mariadb
+        update-types: ["version-update:semver-major"]
