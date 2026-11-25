@@ -2,7 +2,7 @@ x-project: &project .:/var/www
 
 services:
   web:
-    image: nginx:1.27-alpine
+    image: nginx:1.29-alpine
     ports:
       - ${HTTP_PORT:-8080}:80
       - ${HTTPS_PORT:-8443}:443
@@ -33,13 +33,13 @@ services:
     restart: unless-stopped
 
   mail:
-    image: axllent/mailpit:v1.27
+    image: axllent/mailpit:v1.34
     ports:
       - ${MAILPIT_PORT:-8025}:8025
     restart: unless-stopped
 
   db:
-    image: mariadb:11.4
+    image: mariadb:11.8
     profiles: [full]
     environment:
       TZ: ${TZ:-UTC}
